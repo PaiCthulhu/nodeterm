@@ -15,6 +15,21 @@ lista de "concluídos" apodrecendo aqui embaixo.
 
 ---
 
+## 🔴 Resume de sessão nunca usada quebra o nó
+
+**O quê** — abrir um nó de agente claude, **não digitar nada**, deixar o nó morrer (trocar de aba
+desmonta) e reabrir devolve `No conversation found with session ID: <uuid>` e um shell pelado, sem
+agente. Uma segunda ocorrência, pior, está na busca de transcript: abrir um hit deixa no nó um id
+fantasma que pode abandonar uma conversa real que está em disco.
+
+**Por quê** — o id é cunhado pelo nodeterm antes de existir conversa, e nada valida que ele resolve
+antes de montar o `--resume`. Perder um nó vazio é chato; perder o ponteiro de uma conversa real é
+perda de trabalho. Investigação completa (causa raiz medida, a armadilha dos 18 de 40 nós SSH e as
+perguntas em aberto) em [`agent-resume-session-id.md`](agent-resume-session-id.md) — é bug
+cross-platform, então fica na `vwill`.
+
+---
+
 ## Minimizar no nó de arquivo
 
 **O quê** — o nó de arquivo/editor não tem botão de minimizar; nó de terminal e sticky note têm.
