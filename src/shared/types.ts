@@ -236,6 +236,8 @@ export interface CanvasNodeState {
   highScore?: number
   // editor / diff
   filePath?: string
+  /** editor-only: true when a text file was last left in rendered Markdown preview mode. */
+  editorPreview?: boolean
   /**
    * editor/diff-only: true once `filePath` was confirmed gone (e.g. its worktree was removed —
    * see `displacedByWorktree` in `./worktree.ts`). There is nothing to re-point the node at, so

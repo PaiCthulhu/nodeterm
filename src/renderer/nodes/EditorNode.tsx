@@ -32,7 +32,7 @@ const IMAGE_MIME: Record<string, string> = {
  * preview instead of being opened as (binary) text.
  */
 export function EditorNode({ id, data, selected }: NodeProps<CanvasNode>) {
-  const { deleteElements } = useReactFlow()
+  const { deleteElements, updateNodeData } = useReactFlow()
   const bodyRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const modelRef = useRef<monaco.editor.ITextModel | null>(null)
@@ -49,7 +49,6 @@ export function EditorNode({ id, data, selected }: NodeProps<CanvasNode>) {
   }, [appTheme])
 
   const [dirty, setDirty] = useState(false)
-  const [preview, setPreview] = useState(false)
   const [previewHtml, setPreviewHtml] = useState('')
   const [imageSrc, setImageSrc] = useState('')
   const [imageDims, setImageDims] = useState('')
@@ -75,13 +74,22 @@ export function EditorNode({ id, data, selected }: NodeProps<CanvasNode>) {
   // instead of Monaco, which would render the binary as garbage text.
   const isPdf = ext === 'pdf'
 
+  // Markdown preview lives on the NODE (persisted, per editor node) rather than in local state —
+  // same as a terminal's `mdMode`. That is what makes it survive the unmount/remount of switching
+  // tab or project, and a workspace reload. Legacy nodes have no field, so they open in Edit.
+  // Image/PDF nodes never reach the preview UI, so a stale flag on one is inert.
+  const preview = !!data.editorPreview
+  // The mount effect below reads this from inside an async continuation, long after its closure
+  // captured the first render's value.
+  const previewRef = useRef(preview)
+  previewRef.current = preview
+
   const togglePreview = () => {
     if (isImage || isPdf) return
-    setPreview((p) => {
-      const next = !p
-      if (next && editorRef.current) setPreviewHtml(renderMarkdown(editorRef.current.getValue()))
-      return next
-    })
+    const next = !previewRef.current
+    // Render synchronously off the live buffer so the panel never paints a frame of stale HTML.
+    if (next && editorRef.current) setPreviewHtml(renderMarkdown(editorRef.current.getValue()))
+    updateNodeData(id, { editorPreview: next })
   }
   const toggleRef = useRef(togglePreview)
   toggleRef.current = togglePreview
@@ -219,6 +227,9 @@ export function EditorNode({ id, data, selected }: NodeProps<CanvasNode>) {
       })
       editorRef.current = editor
       savedRef.current = content
+      // Restored straight into Preview: nothing has toggled, so render the HTML here — otherwise
+      // the panel would sit empty until the user bounced Edit→Preview by hand.
+      if (previewRef.current) setPreviewHtml(renderMarkdown(content))
       editor.onDidChangeModelContent(() => setDirty(editor!.getValue() !== savedRef.current))
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current())
     })

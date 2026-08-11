@@ -75,6 +75,8 @@ export interface NodeData {
   cwd?: string
   text?: string
   filePath?: string
+  /** editor-only: true when the node shows rendered Markdown over its Monaco editor. */
+  editorPreview?: boolean
   /**
    * editor/diff-only: true once this node's `filePath` was confirmed gone — e.g. a worktree
    * that contained it was removed (`displacedByWorktree` in @shared/worktree sweeps these up
@@ -1066,6 +1068,7 @@ export function nodeStatesToFlow(states: CanvasNodeState[]): CanvasNode[] {
         cwd: n.cwd,
         text: n.text,
         filePath: n.filePath,
+        editorPreview: n.editorPreview,
         fileMissing: n.fileMissing,
         url: n.url,
         diffStaged: n.diffStaged,
@@ -1130,6 +1133,7 @@ export function flowToNodeStates(nodes: CanvasNode[]): CanvasNodeState[] {
         cwd: n.data.cwd,
         text: n.data.text,
         filePath: n.data.filePath,
+        editorPreview: n.data.editorPreview,
         fileMissing: n.data.fileMissing,
         url: n.data.url,
         diffStaged: n.data.diffStaged,
