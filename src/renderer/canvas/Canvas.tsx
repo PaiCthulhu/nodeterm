@@ -112,6 +112,7 @@ import { describeOs, REPO_URL } from '../lib/bugReport'
 import { shouldReleasePaneFocus } from '../lib/paneFocus'
 import { viewportAtZoom1 } from '../lib/zoomReset'
 import { isSpaceRelease, spacePanKeydown } from '../lib/spacePan'
+import { altPanKeydown, isAltRelease } from '../lib/altPan'
 import { UpdateCard } from '../components/UpdateCard'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
 import { TmuxBanner } from '../components/TmuxBanner'
@@ -676,6 +677,8 @@ export function Canvas() {
   const [canvasLocked, setCanvasLocked] = useState(false)
   /** SPACE is held: a left-drag pans instead of box-selecting, Figma-style (issue #86). */
   const [spacePan, setSpacePan] = useState(false)
+  /** ALT is held: a left-drag pans instead of box-selecting, like SPACE does. */
+  const [altPan, setAltPan] = useState(false)
 
   /**
    * Hold SPACE to pan — the Figma/Miro gesture, requested in issue #86 (where a user pressed it,
@@ -706,6 +709,37 @@ export function Canvas() {
       if (isSpaceRelease(e)) setSpacePan(false)
     }
     const release = (): void => setSpacePan(false)
+    window.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('keyup', onKeyUp, true)
+    window.addEventListener('blur', release)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('keyup', onKeyUp, true)
+      window.removeEventListener('blur', release)
+    }
+  }, [])
+
+  /**
+   * Hold ALT to pan — the same gesture as SPACE above, on a key that is free while typing.
+   *
+   * `preventDefault` on engage is load-bearing on Windows, and only there: a bare Alt press opens
+   * the Electron window menu, which steals the keyboard and never delivers the keyup — the canvas
+   * would stay in grab mode until the next Alt tap.
+   *
+   * The release paths mirror space-pan's, and for the same reasons: a keyup ends the ordinary
+   * gesture, and a window blur ends the one where the user Alt+Tabbed away mid-pan (that keyup is
+   * delivered to the window they switched to, never to us).
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!altPanKeydown(e)) return
+      e.preventDefault()
+      setAltPan(true)
+    }
+    const onKeyUp = (e: KeyboardEvent): void => {
+      if (isAltRelease(e)) setAltPan(false)
+    }
+    const release = (): void => setAltPan(false)
     window.addEventListener('keydown', onKeyDown, true)
     window.addEventListener('keyup', onKeyUp, true)
     window.addEventListener('blur', release)
@@ -2511,9 +2545,12 @@ export function Canvas() {
   // this is the single source of zoom (no double-zoom on the open canvas).
   //
   // With settings.wheelZoom on, a PLAIN wheel zooms too (mouse-first workflow; scroll-to-pan
-  // is disabled on <ReactFlow> in that mode) — except inside a `nowheel` node body (focused
-  // xterm scrollback, Monaco, markdown/chat panes), which keeps its own scrolling. The hover
-  // guard overlay is NOT nowheel, so an unfocused terminal still zooms under the cursor.
+  // is disabled on <ReactFlow> in that mode) — except inside a `nowheel` node body (xterm
+  // scrollback, Monaco, markdown/chat panes), which keeps its own scrolling. The hover guard
+  // overlay carries `nowheel` too, on purpose: it lets a plain wheel over an UNFOCUSED terminal
+  // scroll that terminal's scrollback immediately, without requiring a click-to-focus or a dwell
+  // delay first. Cmd/Ctrl+wheel still zooms there regardless, because the `.nowheel` check only
+  // runs in the plain-wheel branch below — the ctrl/meta branch always intercepts before xterm.
   const wheelZoom = settings.wheelZoom
   useEffect(() => {
     const wrap = flowWrapRef.current
@@ -2570,6 +2607,32 @@ export function Canvas() {
     wrap.addEventListener('dblclick', onDoubleClick)
     return () => wrap.removeEventListener('dblclick', onDoubleClick)
   }, [getViewport, setViewport, canvasLocked])
+
+  // React Flow only paints grab/grabbing when button 0 is a pan button, so a middle-drag pans with
+  // an arrow cursor and reads as "nothing is happening". `mouseup` is on the WINDOW because the
+  // release routinely lands outside the wrapper after a long drag.
+  const [middlePanning, setMiddlePanning] = useState(false)
+  useEffect(() => {
+    const el = flowWrapRef.current
+    if (!el) return
+    const down = (e: MouseEvent): void => {
+      if (e.button === 1) setMiddlePanning(true)
+    }
+    const up = (e: MouseEvent): void => {
+      if (e.button === 1) setMiddlePanning(false)
+    }
+    // Every listener is a named const so the cleanup can actually remove it — an inline arrow here
+    // would register a NEW function on each effect run and leave the old one attached forever.
+    const release = (): void => setMiddlePanning(false)
+    el.addEventListener('mousedown', down)
+    window.addEventListener('mouseup', up)
+    window.addEventListener('blur', release)
+    return () => {
+      el.removeEventListener('mousedown', down)
+      window.removeEventListener('mouseup', up)
+      window.removeEventListener('blur', release)
+    }
+  }, [])
 
   /** Flow-space point at the center of the visible canvas (for dock-added nodes). */
   const viewCenter = useCallback(() => {
@@ -7908,7 +7971,7 @@ export function Canvas() {
         </button>
       </div>
 
-      <div className="flow-wrap" ref={flowWrapRef}>
+      <div className={`flow-wrap${middlePanning ? ' is-panning' : ''}`} ref={flowWrapRef}>
         {/* First-contact guidance: an empty canvas used to be a black void (field report:
             "didn't know what to do first"). Pointer-events-none so it can never eat a
             right-click or box-select; keyed off the LIVE nodes array, so it reappears on
@@ -7971,14 +8034,14 @@ export function Canvas() {
           // shows the grab cursor whenever panOnDrag includes button 0); box-select stays
           // reachable via Shift+drag (selectionKeyCode's default). 'select' keeps the
           // Figma-style default: left-drag rubber-band selects, pan is middle-drag/scroll.
-          selectionOnDrag={!spacePan && settings.canvasDragMode !== 'pan'}
+          selectionOnDrag={!spacePan && !altPan && settings.canvasDragMode !== 'pan'}
           selectionMode={SelectionMode.Partial}
           // The lock freezes the CAMERA only (pan/zoom) — nodes stay draggable, resizable and
           // connectable: the point is "stop the map sliding under me", not "freeze my work".
           panOnDrag={
             canvasLocked
               ? false
-              : spacePan || settings.canvasDragMode === 'pan'
+              : spacePan || altPan || settings.canvasDragMode === 'pan'
                 ? [0, 1]
                 : [1]
           }

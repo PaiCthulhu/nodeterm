@@ -66,6 +66,35 @@ export function projectSignalCounts(group: SessionGroup): { attention: number; u
   return { attention, unread }
 }
 
+/** What the tab-bar glyph shows for a whole project. */
+export type ProjectSignal = 'attention' | 'working' | 'idle'
+
+/**
+ * One glyph for a project's worth of sessions, for the tab bar.
+ *
+ * Deliberately narrower than the per-row glyph in the sidebar, and each omission has a reason.
+ * `unread` is left out because the tab ALREADY carries it as the numeric `tab__badge` — a pulsing
+ * check beside that badge would be the same fact twice. `done` is left out because, aggregated over
+ * a project, a finished-and-already-seen turn would light a check that never clears and that the
+ * user cannot act on.
+ *
+ * What remains is what a glance at a background tab should answer: is anything asking for me
+ * (attention), is anything running (working), or neither.
+ */
+export function projectSignal(
+  nodes: SessionNodeInput[],
+  statusById: Record<string, AgentNodeStatus>
+): ProjectSignal {
+  let working = false
+  for (const n of nodes) {
+    const kind = sessionStatusKind(statusById[n.id]?.state)
+    // Attention is terminal: nothing later in the list can outrank it, so stop looking.
+    if (kind === 'attention') return 'attention'
+    if (kind === 'working') working = true
+  }
+  return working ? 'working' : 'idle'
+}
+
 export function sessionStatusKind(state: AgentNodeStatus['state']): StatusKind {
   switch (state) {
     case 'working':

@@ -2854,14 +2854,24 @@ export function TerminalNode({
    * listener overwrites the state (a SessionStart is what clears it). Clearing it here would only
    * blank the badge for the gap in between, on a node the user is looking at.
    *
-   * What is NOT cleared here is as deliberate as it was before: the node's PERSISTED status
-   * (unread / session / sessionId) stays, because a project switch is a detach and the context
-   * meter looks that sessionId up on remount. Real deletion drops the whole entry in
-   * `Canvas.deleteNodes`.
+   * What is NOT cleared here is as deliberate as it was before, and now goes one step further. The
+   * node's PERSISTED status (unread / session / sessionId) stays, because a project switch is a
+   * detach and the context meter looks that sessionId up on remount. So does the LIVE state, for
+   * the reason the two cases above already establish, carried to its end: a departure is not a
+   * death either. Switching project tabs unmounts every node of the project you leave while its
+   * tmux session — and the agent inside it — keeps running, and `sessionStatusKind(undefined)`
+   * collapses "not running" and "nobody is looking" into the same grey idle dot, so clearing it
+   * made every session of the project you just left look stopped the instant you clicked another
+   * tab, however busy its agent was. Nothing restored it either: `state` is deliberately left out
+   * of the persisted fields. So this releases only the focus claim (`detach`). Keeping the entry is
+   * honest because the feed outlives the node: `onAgentStatus` is wired once on Canvas, which
+   * survives the tab switch and dispatches by nodeId, so a detached node's hook events keep
+   * landing; a silent death is still caught by `sweepStaleWorking`. Real deletion is the one event
+   * that must forget the node, and it drops the whole entry in `Canvas.deleteNodes`.
    */
   useEffect(
     () => () => {
-      useAgentStatus.getState().setState(id, undefined)
+      useAgentStatus.getState().detach(id)
       useAgentNodes.getState().clearForParent(id)
     },
     [id]
@@ -3723,10 +3733,10 @@ export function TerminalNode({
         )}
         {armed && !mdMode && (
           <div
-            className="term-hover-guard"
+            className="term-hover-guard nowheel"
             onMouseDown={onGuardDown}
             onMouseUp={onGuardUp}
-            title="Click to type · drag to move · scroll to pan"
+            title="Click to type · drag to move · scroll to scroll back"
           />
         )}
         {mdMode &&

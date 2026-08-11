@@ -106,6 +106,21 @@ export interface AgentStatusStore {
   ): void
   /** Record a /loop iteration (count++ and append its summary). No-op if not looping. */
   bumpLoop(id: string, message?: string): void
+  /**
+   * The node left the DOM without dying: a project-tab switch unmounts every node of the project
+   * you leave, while its tmux session — and the agent inside it — keeps running. Releases the
+   * focus claim and NOTHING else. In particular the live `state` stays: the sidebar, kanban and
+   * minimap all render nodes of non-active projects, and `sessionStatusKind(undefined)` collapses
+   * "not running" and "nobody is looking" into the same grey idle dot, so clearing it here made a
+   * working agent look stopped the instant you clicked another tab. Keeping it is honest because
+   * the feed outlives the node: `onAgentStatus` is wired once on Canvas and dispatches by nodeId,
+   * so a detached node's hook events keep updating this entry. A silent death is caught by
+   * `sweepStaleWorking`, but only while `state === 'working'` — a node that died mid `waiting` or
+   * `blocked` keeps that state (and its bell) indefinitely, until the agent's next real event or
+   * an app restart (state itself is never persisted). Real deletion is `remove` — that one must
+   * forget the node.
+   */
+  detach(id: string): void
   remove(id: string): void
 }
 
@@ -369,6 +384,9 @@ export function createAgentStatusSession(
         save(byId)
         return { byId }
       }),
+
+    detach: (id) =>
+      set((s) => (s.activeId === id ? { activeId: null } : s)),
 
     remove: (id) =>
       set((s) => {

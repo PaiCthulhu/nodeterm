@@ -4,7 +4,9 @@ import {
   sessionStatusKind,
   isGroupCollapsed,
   projectSignalCounts,
-  type ProjectInput
+  projectSignal,
+  type ProjectInput,
+  type SessionNodeInput
 } from './sessionList'
 import type { AgentNodeStatus } from '../state/agentStatus'
 
@@ -177,5 +179,59 @@ describe('projectSignalCounts', () => {
       ''
     )
     expect(projectSignalCounts(g)).toEqual({ attention: 0, unread: 0 })
+  })
+})
+
+describe('projectSignal', () => {
+  const node = (id: string): SessionNodeInput => ({
+    id,
+    kind: 'terminal',
+    title: id,
+    color: '#0a84ff'
+  })
+
+  it('is idle when the project has no nodes at all', () => {
+    expect(projectSignal([], {})).toBe('idle')
+  })
+
+  it('is idle when no node has a status entry', () => {
+    expect(projectSignal([node('a'), node('b')], {})).toBe('idle')
+  })
+
+  it('reports working when any node is working', () => {
+    const st = { b: { unread: false, state: 'working' as const } }
+    expect(projectSignal([node('a'), node('b')], st)).toBe('working')
+  })
+
+  it('attention wins over working, whatever the node order', () => {
+    const st = {
+      a: { unread: false, state: 'working' as const },
+      b: { unread: false, state: 'blocked' as const }
+    }
+    expect(projectSignal([node('a'), node('b')], st)).toBe('attention')
+    expect(projectSignal([node('b'), node('a')], st)).toBe('attention')
+  })
+
+  it('treats waiting as attention, same as blocked', () => {
+    const st = { a: { unread: false, state: 'waiting' as const } }
+    expect(projectSignal([node('a')], st)).toBe('attention')
+  })
+
+  // The tab already shows unread as a numeric badge; a second unread indicator beside it
+  // would say the same thing twice.
+  it('ignores unread — that is the numeric badge, not this glyph', () => {
+    const st = { a: { unread: true } }
+    expect(projectSignal([node('a')], st)).toBe('idle')
+  })
+
+  // A per-project check that never clears is noise: it is not actionable.
+  it('collapses done into idle', () => {
+    const st = { a: { unread: false, state: 'done' as const } }
+    expect(projectSignal([node('a')], st)).toBe('idle')
+  })
+
+  it('ignores status entries for nodes outside this project', () => {
+    const st = { elsewhere: { unread: false, state: 'working' as const } }
+    expect(projectSignal([node('a')], st)).toBe('idle')
   })
 })

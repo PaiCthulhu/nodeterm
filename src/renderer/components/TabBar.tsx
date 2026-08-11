@@ -12,12 +12,21 @@ import { sessionCount, sessionForProject, useProjectSession } from '../session/s
 import { tabClickAction } from '../session/relay-tab'
 import { useMenuFlip } from '../ui/useMenuFlip'
 import { IconCanvasView, IconKanban } from './icons'
+import { SessionStatusGlyph } from './SessionStatusGlyph'
+import { projectSignal, type ProjectSignal } from '../lib/sessionList'
 import {
   ALL_PERMISSION_MODES,
   PERMISSION_MODE_LABELS,
   type AgentPermissionMode
 } from '@shared/agents/config'
 import { bypassSandboxCaveat, permissionModeAgentsLabel } from '@shared/agents/approval-mode'
+
+/** Tooltip for the tab glyph. `idle` says nothing: a quiet project needs no explanation. */
+const STATE_LABEL_TAB: Record<ProjectSignal, string | undefined> = {
+  attention: 'Needs you',
+  working: 'Running',
+  idle: undefined
+}
 
 interface TabBarProps {
   onSwitch: (id: string) => void
@@ -90,6 +99,23 @@ export function TabBar({
     return ids
   })
   const unreadSet = useMemo(() => new Set(unreadIds.split('|').filter(Boolean)), [unreadIds])
+  // Same discipline as `unreadIds` above, and for the same reason: this subscription must collapse
+  // to a primitive that changes only when a project's BUCKET changes. Returning the map (or an
+  // object) would re-render the whole strip on every tool event of every agent.
+  const signalKey = useAgentStatus((s) => {
+    let key = ''
+    for (const p of projects) key += `${p.id}:${projectSignal(p.nodes, s.byId)}|`
+    return key
+  })
+  const signalByProject = useMemo(() => {
+    const out: Record<string, ProjectSignal> = {}
+    for (const part of signalKey.split('|')) {
+      if (!part) continue
+      const i = part.lastIndexOf(':')
+      out[part.slice(0, i)] = part.slice(i + 1) as ProjectSignal
+    }
+    return out
+  }, [signalKey])
   const [menuId, setMenuId] = useState<string | null>(null)
   // `flipBase` is the ANCHOR's top edge: when the menu would overflow the bottom of the window,
   // it opens upward from the caret button instead (see useMenuFlip below).
@@ -250,7 +276,7 @@ export function TabBar({
               <div
                 key={p.id}
                 className={`tab${active ? ' active' : ''}${p.unavailable ? ' unavailable' : ''}${dropId === p.id ? ' is-drop-before' : ''}`}
-                style={active ? { color: p.color } : undefined}
+                style={{ color: p.color }}
                 draggable={editingId !== p.id}
                 onDragStart={(e) => {
                   e.dataTransfer.effectAllowed = 'move'
@@ -296,9 +322,10 @@ export function TabBar({
                       : p.cwd || undefined
                 }
               >
-                <span
-                  className="tab__dot"
-                  style={active ? { background: p.color } : undefined}
+                <SessionStatusGlyph
+                  statusKind={signalByProject[p.id] ?? 'idle'}
+                  unread={false}
+                  label={STATE_LABEL_TAB[signalByProject[p.id] ?? 'idle']}
                 />
                 {/* An SSH project looks identical to a local one once it is named, and the
                     difference matters: its terminals, git and file ops all run on another

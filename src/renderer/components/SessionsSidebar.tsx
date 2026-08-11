@@ -11,6 +11,7 @@ import { useProjects } from '../state/projects'
 import { useSettings } from '../state/settings'
 import { useAgentStatus } from '../state/agentStatus'
 import { useSessionNaming } from '../state/sessionNaming'
+import { useSidebarCollapse } from '../state/sidebarCollapse'
 import { useSession } from '../session/session'
 
 export interface SessionsSidebarProps {
@@ -54,9 +55,9 @@ export function SessionsSidebar(props: SessionsSidebarProps): JSX.Element | null
   const [filter, setFilter] = useState('')
   // Explicit per-project collapse choices (true = collapsed, false = expanded). Absent =
   // follow the default (active project expanded, others collapsed — see isGroupCollapsed).
-  // Deliberately transient: reset on every project switch, so the toggles are "for now",
-  // not forever — switching projects always re-focuses the list on the active one.
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({})
+  // Persisted per machine (see state/sidebarCollapse.ts) so it survives project switches,
+  // tab reloads, and app restarts.
+  const overrides = useSidebarCollapse((s) => s.collapsedByProject)
   const [branches, setBranches] = useState<Record<string, string>>({})
   // Drag-to-group: the session being dragged, and the current drop target for highlighting.
   const [drag, setDrag] = useState<{ projectId: string; nodeId: string } | null>(null)
@@ -68,16 +69,15 @@ export function SessionsSidebar(props: SessionsSidebarProps): JSX.Element | null
   // Inline group rename: the group node id being edited + its draft title.
   const [editGroup, setEditGroup] = useState<{ id: string; draft: string } | null>(null)
 
-  // Switching the active project resets the manual collapse choices, so the default takes
-  // over again: the newly active project expands, everything else collapses. Without this,
-  // one manual toggle stuck forever and project switches stopped re-focusing the list.
-  // Gated on settings.sidebarAutoCollapse — with it OFF, a project switch changes nothing:
-  // every project defaults to expanded (see isGroupCollapsed) and the user's toggles stick.
   const autoCollapse = useSettings((s) => s.settings.sidebarAutoCollapse)
+
+  // Projects get deleted; their collapse choice must not outlive them in localStorage. Prune
+  // against `allProjects`, not the closed-filtered `projects` — closing a project is not deleting
+  // it, and pruning on the filtered list would forget the user's choice the moment they closed it,
+  // so it reset to the default the next time they reopened it.
   useEffect(() => {
-    if (!autoCollapse) return
-    setOverrides((prev) => (Object.keys(prev).length === 0 ? prev : {}))
-  }, [activeProjectId, autoCollapse])
+    useSidebarCollapse.getState().prune(allProjects.map((p) => p.id))
+  }, [allProjects])
 
   // Look up the current git branch for each project cwd (best-effort, cached). Gated on `open`
   // and caches a NEGATIVE result too — without the '' fallback a non-git cwd re-fired a git
@@ -118,7 +118,7 @@ export function SessionsSidebar(props: SessionsSidebarProps): JSX.Element | null
   const total = groups.reduce((n, g) => n + projectCount(g), 0)
 
   const toggleCollapse = (id: string, currentlyCollapsed: boolean): void => {
-    setOverrides((prev) => ({ ...prev, [id]: !currentlyCollapsed }))
+    useSidebarCollapse.getState().toggle(id, currentlyCollapsed)
   }
 
   // Drop-target wiring shared by the project header (ungroup) and group sub-headers (add).

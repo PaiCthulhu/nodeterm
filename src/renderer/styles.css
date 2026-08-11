@@ -261,6 +261,14 @@ body,
   white-space: nowrap;
 }
 
+/* The sidebar's glyphs carry a margin-top that aligns them with the first line of a two-line
+   session row. A tab is a single centred flex line, so that offset only pushes them off-centre. */
+.tab .ss-dot,
+.tab .ss-check,
+.tab .ss-bell {
+  margin-top: 0;
+}
+
 .tab:hover {
   background: rgba(var(--tint-rgb), 0.05);
 }
@@ -293,14 +301,6 @@ body,
   border-radius: 4px;
   color: var(--muted);
   opacity: 0.85;
-}
-
-.tab__dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: rgba(var(--tint-rgb), 0.3);
 }
 
 /* Unread-completion count badge on a project tab. */
@@ -2416,6 +2416,13 @@ body,
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+/* React Flow paints grab/grabbing only when the LEFT button is a pan button; a middle-drag pan
+   would otherwise keep the arrow cursor and read as if nothing were happening. */
+.flow-wrap.is-panning,
+.flow-wrap.is-panning * {
+  cursor: grabbing !important;
 }
 
 /* ---- Remote access dialog (from the project caret menu) ---- */
