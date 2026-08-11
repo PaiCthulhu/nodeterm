@@ -218,6 +218,33 @@ describe('SINGLE-USER REGRESSION: co-attach must not change the solo path', () =
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
+  // ── Launching the app from inside a Claude Code session must not follow the user into a pane ──
+  it('strips the launching Claude Code session identity from the spawned env', async () => {
+    // What `npm run dev` from an agent's shell leaves in the main process, and what a `claude`
+    // started in a pane would read as "I am a nested run" → no transcript.
+    const leaked: Record<string, string> = {
+      CLAUDECODE: '1',
+      CLAUDE_CODE_CHILD_SESSION: '1',
+      CLAUDE_CODE_SESSION_ID: 'deadbeef-0000-4000-8000-000000000000',
+      CLAUDE_CODE_ENTRYPOINT: 'cli',
+      CLAUDE_PID: '4242',
+      CLAUDE_EFFORT: 'high'
+    }
+    const saved = Object.fromEntries(Object.keys(leaked).map((k) => [k, process.env[k]]))
+    Object.assign(process.env, leaked)
+    try {
+      await tmuxManager()
+      await create(80, 24, 'solo-claude')
+      const { env } = spawnArgs[0]
+      for (const k of Object.keys(leaked)) expect(env[k]).toBeUndefined()
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  })
+
   // ── `fresh` drives scrollback replay + agent resume: it must still be computed from tmux ──
   it('fresh:false on a WARM reattach (tmux session already exists) — no cold restore', async () => {
     await tmuxManager()

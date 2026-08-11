@@ -521,6 +521,31 @@ export const TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1000
 export const PTY_END_BUDGET = { perSec: 20, burst: 200 }
 
 /**
+ * Claude Code stamps its own session identity into every process it spawns, and a `claude` that
+ * finds these in its env concludes it is a NESTED run: it stops writing a transcript and prints
+ * "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker".
+ *
+ * That is the right call for a shell Claude Code launched itself, and the wrong one here. Launch
+ * the app once from inside a Claude Code session — `npm run dev` from an agent's shell is the
+ * common way, and it is exactly how this app gets developed — and the marker lands in the main
+ * process, from where `{ ...process.env }` hands it to EVERY terminal and EVERY agent node for the
+ * lifetime of that app instance. The user gets transcript-less Claude sessions in a fresh terminal
+ * they opened themselves, with nothing on screen connecting it to how the app was started.
+ *
+ * Same shape as the TMUX strip below, same reason: a terminal must not leak the accident of its
+ * own launch into the shells it opens. Stripped rather than overridden so a user who really does
+ * want the inherited behavior can still set these in their shell profile.
+ */
+export const CLAUDE_SESSION_ENV_STRIP = [
+  'CLAUDECODE',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_PID',
+  'CLAUDE_EFFORT'
+] as const
+
+/**
  * Manages all live PTY processes and bridges them to the renderer over IPC.
  *
  * On macOS/Linux with tmux available, each terminal node attaches to a persistent
@@ -1232,6 +1257,8 @@ export class PtyManager {
     const env = { ...process.env, TERM: 'xterm-256color' } as Record<string, string>
     delete env.TMUX
     delete env.TMUX_PANE
+    // Same idea for the launching Claude Code session's identity (see CLAUDE_SESSION_ENV_STRIP).
+    for (const k of CLAUDE_SESSION_ENV_STRIP) delete env[k]
 
     // A GUI app launched from Finder/Dock inherits only a minimal PATH, so spawned terminals
     // couldn't find tools in /usr/local/bin, Homebrew, ~/.local/bin, nvm, bun, etc. (the classic
