@@ -66,8 +66,13 @@ export function buildManagedHookCommand(scriptPath: string): string {
 // foreign app's hooks from any event we both subscribe to.
 function managedMarkerFor(command: string): string {
   const m = command.match(/agent-hooks[\\/][^"'\s]+/)
-  return m ? m[0].replace(/\\/g, '/') : 'agent-hooks'
+  return m ? posixify(m[0]) : 'agent-hooks'
 }
+
+/** Backslashes -> forward slashes, so a Windows-built command compares equal to the marker.
+ *  The marker is normalized on the way in; the command it is matched against must be too, or
+ *  `isManaged` never recognizes our own entry and every install appends one more copy. */
+const posixify = (s: string): string => s.replace(/\\/g, '/')
 
 /** A subscription's event name, whichever form it was declared in. */
 const eventNameOf = (e: ManagedHookEvent): string => (typeof e === 'string' ? e : e.event)
@@ -78,7 +83,7 @@ const matcherOf = (e: ManagedHookEvent): string | undefined => (typeof e === 'st
 /** A managed entry: matches OUR script under `agent-hooks/` or the legacy `claude-signals` marker. */
 function isManaged(d: HookDef, marker: string): boolean {
   return !!d.hooks?.some(
-    (h) => h.command.includes(marker) || h.command.includes('claude-signals')
+    (h) => posixify(h.command).includes(marker) || h.command.includes('claude-signals')
   )
 }
 
@@ -182,7 +187,7 @@ export function removeHooksFrom(opts: RemoveHooksOptions): void {
   for (const e of events) {
     const ev = eventNameOf(e)
     if (!config.hooks[ev]) continue
-    config.hooks[ev] = config.hooks[ev].filter((d) => !d.hooks?.some((h) => h.command.includes(marker)))
+    config.hooks[ev] = config.hooks[ev].filter((d) => !d.hooks?.some((h) => posixify(h.command).includes(marker)))
     if (config.hooks[ev].length === 0) delete config.hooks[ev]
   }
   try {

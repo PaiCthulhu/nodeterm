@@ -32,6 +32,7 @@ export const IPC = {
   transcriptSearch: 'transcript:search',
   appToggleMarkdown: 'app:toggle-markdown',
   appCloseNode: 'app:close-node',
+  appZoomReset: 'app:zoom-reset',
   appCloseWindow: 'app:close-window',
   appFocusWindow: 'app:focus-window',
   /** Write text to the system clipboard from the MAIN process. Renderer-side `clipboard` access is

@@ -3699,6 +3699,11 @@ export function Canvas() {
     })
   }, [deleteNodes])
 
+  // Cmd/Ctrl+0 (forwarded from main, which has to steal it from the default menu's "Reset Zoom").
+  // Deliberate command, not a gesture, so it ignores `canvasLocked` — same contract as the dock and
+  // Controls buttons, which the lock has always let through.
+  useEffect(() => window.nodeTerminal.onZoomReset(zoomTo100), [zoomTo100])
+
   const groupSelection = useCallback(
     (ids: string[]) => {
       const groupCount = nodesRef.current.filter((n) => n.type === 'group').length
@@ -5121,6 +5126,7 @@ export function Canvas() {
           // Canvas actions.
           { label: 'Select all', icon: <IconSelectAll />, onClick: selectAll },
           { label: 'Fit view', icon: <IconFit />, onClick: fitAll },
+          { label: 'Zoom to 100%', icon: <IconFit />, onClick: zoomTo100 },
           // Project-wide: restart every idle agent CLI in place (new model pickup). Hidden on a
           // canvas with no restartable agent node — there it could only ever report "0 restarted".
           ...(hasRestartableAgents()
@@ -5151,6 +5157,7 @@ export function Canvas() {
       isSshProject,
       selectAll,
       fitView,
+      zoomTo100,
       hasRestartableAgents,
       restartIdleAgents
     ]
@@ -8486,6 +8493,7 @@ export function Canvas() {
         onFitView={fitAll}
         onZoomIn={() => zoomIn({ duration: 150 })}
         onZoomOut={() => zoomOut({ duration: 150 })}
+        onZoomReset={zoomTo100}
         onDictate={toggleDictation}
         dictateActive={dictationOpen}
       />

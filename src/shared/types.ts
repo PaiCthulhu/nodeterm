@@ -1992,6 +1992,8 @@ export interface NodeTerminalApi {
   onMarkdownToggle(listener: () => void): () => void
   /** Fires when the user presses Cmd/Ctrl+W (close selected node). Returns unsubscribe. */
   onCloseNode(listener: () => void): () => void
+  /** Fires when the user presses Cmd/Ctrl+0 (reset the canvas zoom to 100%). Returns unsubscribe. */
+  onZoomReset(listener: () => void): () => void
   /** Close the application window (Cmd/Ctrl+W fallback when no node is selected). */
   closeWindow(): void
   /** Bring the app window to the foreground (show + OS focus). Called after a file is DROPPED

@@ -537,6 +537,7 @@ const api: NodeTerminalApi = {
   // ipcRenderer listeners and trip the MaxListeners warning.
   onMarkdownToggle: subscribe(IPC.appToggleMarkdown),
   onCloseNode: subscribe(IPC.appCloseNode),
+  onZoomReset: subscribe(IPC.appZoomReset),
   closeWindow: () => ipcRenderer.send(IPC.appCloseWindow),
   focusWindow: () => ipcRenderer.send(IPC.appFocusWindow),
   setBadgeCount: (count) => ipcRenderer.send(IPC.appSetBadge, count),

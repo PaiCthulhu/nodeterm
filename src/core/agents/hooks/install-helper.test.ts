@@ -41,6 +41,23 @@ describe('mergeManagedHook', () => {
     const twice = mergeManagedHook(once, cmd, ['Stop'])
     expect(twice.hooks!.Stop).toEqual([{ hooks: [{ type: 'command', command: cmd }] }])
   })
+  it('is idempotent for a WINDOWS path too — the marker is posix, the command is not', () => {
+    // The marker normalizes `\` to `/`; the command keeps the backslashes the path was built
+    // with. Comparing them raw never matched, so every app start appended one more copy —
+    // a real settings.json had grown to 11 identical entries on each of the 9 events.
+    const win = buildManagedHookCommand('C:\\Users\\u\\.nodeterm\\agent-hooks\\claude.sh')
+    const once = mergeManagedHook({}, win, ['Stop'])
+    const thrice = mergeManagedHook(mergeManagedHook(once, win, ['Stop']), win, ['Stop'])
+    expect(thrice.hooks!.Stop).toEqual([{ hooks: [{ type: 'command', command: win }] }])
+  })
+  it("leaves another app's WINDOWS agent-hooks entry alone", () => {
+    // Normalizing must not widen the match: a different script under a foreign agent-hooks dir
+    // still has a different tail, so it survives.
+    const win = buildManagedHookCommand('C:\\Users\\u\\.nodeterm\\agent-hooks\\claude.sh')
+    const foreign = { hooks: [{ type: 'command', command: "sh 'C:\\someapp\\agent-hooks\\claude-hook.sh'" }] }
+    const out = mergeManagedHook({ hooks: { Stop: [foreign] } }, win, ['Stop'])
+    expect(out.hooks!.Stop).toEqual([foreign, { hooks: [{ type: 'command', command: win }] }])
+  })
   it("leaves another app's agent-hooks entry alone", () => {
     // A foreign hook command can also contain "agent-hooks" — a substring match would delete
     // that tool's hooks the moment we install into an event it also uses (StopFailure).

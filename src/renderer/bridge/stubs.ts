@@ -310,6 +310,9 @@ export function buildStubApi(): Omit<
     },
     onMarkdownToggle: noopUnsub,
     onCloseNode: noopUnsub,
+    // Server Edition never gets this one: Cmd/Ctrl+0 is intercepted in the desktop main process,
+    // and in a browser tab it stays the browser's own page-zoom reset.
+    onZoomReset: noopUnsub,
     closeWindow: noop,
     // Best-effort: a browser tab can't force itself frontmost the way the desktop BrowserWindow
     // can, but `window.focus()` still helps when the page is merely blurred (not another OS app).

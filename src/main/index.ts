@@ -460,6 +460,14 @@ function createWindow(): BrowserWindow {
     if (key === 'm') {
       event.preventDefault()
       win.webContents.send(IPC.appToggleMarkdown)
+    } else if (key === '0' && !input.shift) {
+      // Cmd/Ctrl+0 belongs to the canvas, not to the chrome. We never call
+      // Menu.setApplicationMenu, so the DEFAULT Electron menu is live and owns this accelerator as
+      // "Reset Zoom" — which resets the webContents zoomFactor, scaling the whole UI. A menu
+      // accelerator outranks any renderer keydown listener, so the only way to claim the combo is
+      // here, exactly like the Cmd/Ctrl+M and Cmd/Ctrl+W cases around it.
+      event.preventDefault()
+      win.webContents.send(IPC.appZoomReset)
     } else if (key === 'w' && !input.shift) {
       // Repurpose Cmd/Ctrl+W: the renderer closes the selected node(s); if none are
       // selected it asks us to close the window (the standard behavior).

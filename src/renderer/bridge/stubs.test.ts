@@ -22,7 +22,8 @@ describe('bridge stubs', () => {
       s.updates.onDownloaded(() => {}),
       s.updates.onNotAvailable(() => {}),
       s.updates.onError(() => {}),
-      s.onMarkdownToggle(() => {})
+      s.onMarkdownToggle(() => {}),
+      s.onZoomReset(() => {})
     ]) {
       expect(typeof un).toBe('function')
       expect(() => un()).not.toThrow()

@@ -27,6 +27,7 @@ interface DockProps {
   onFitView: () => void
   onZoomIn: () => void
   onZoomOut: () => void
+  onZoomReset: () => void
   onDictate: () => void
   dictateActive: boolean
 }
@@ -53,6 +54,7 @@ export function Dock({
   onFitView,
   onZoomIn,
   onZoomOut,
+  onZoomReset,
   onDictate,
   dictateActive
 }: DockProps) {
@@ -197,7 +199,14 @@ export function Dock({
         <button className="dock-btn dock-zoom-btn" title="Zoom out" onClick={onZoomOut}>
           <MinusIcon />
         </button>
-        <span className="dock-zoom">{zoomPct}%</span>
+        {/* The readout doubles as the reset: the number you want to be 100 is the thing you click. */}
+        <button
+          className="dock-btn dock-zoom"
+          title={hintLabel('Reset zoom to 100% (⌘0)')}
+          onClick={onZoomReset}
+        >
+          {zoomPct}%
+        </button>
         <button className="dock-btn dock-zoom-btn" title="Zoom in" onClick={onZoomIn}>
           <PlusSmallIcon />
         </button>
