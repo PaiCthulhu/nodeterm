@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { findTmux, wellKnownTmux } from './pty-manager'
+import { findTmux, tmuxBinNames, wellKnownTmux } from './pty-manager'
 
 /**
  * WHICH BINARY PROVIDES THE MULTIPLEXER.
@@ -16,9 +16,13 @@ import { findTmux, wellKnownTmux } from './pty-manager'
  * aliases. It answers every subcommand this app issues (verified against psmux 3.3.7: source-file,
  * has-session, new-session -A -D -e -c -s, capture-pane -p -e -S, send-keys -l/Enter,
  * display-message with #{cursor_x}/#{cursor_y}/#{cursor_flag}/#{pane_current_command},
- * list-sessions -F, kill-session). So the fix is not a Windows code path — it is one more NAME to
- * look for, on every platform.
+ * list-sessions -F, kill-session).
+ *
+ * The name list is SCOPED to Windows — see `tmuxBinNames` at the bottom of this file. Every
+ * `findTmux` case below therefore passes it explicitly rather than inheriting the host default,
+ * so the assertions read the same on a Windows dev box and on the Linux CI runner.
  */
+const WIN_NAMES = tmuxBinNames('win32')
 describe('findTmux', () => {
   const dirs: string[] = []
   afterEach(() => {
@@ -43,39 +47,66 @@ describe('findTmux', () => {
     p === null ? null : path.basename(p).toLowerCase()
 
   it('resolves tmux from the PATH', () => {
-    expect(binName(findTmux(pathDir('tmux'), []))).toBe(os.platform() === 'win32' ? 'tmux.exe' : 'tmux')
+    expect(binName(findTmux(pathDir('tmux'), [], WIN_NAMES))).toBe(
+      os.platform() === 'win32' ? 'tmux.exe' : 'tmux'
+    )
   })
 
   it('resolves psmux when it is the only multiplexer installed', () => {
     // THE WINDOWS CASE. Before this, a psmux-only host resolved nothing and every terminal fell
     // through to the plain-shell branch — the silent degrade this whole port exists to remove.
-    expect(binName(findTmux(pathDir('psmux'), []))).toBe(
+    expect(binName(findTmux(pathDir('psmux'), [], WIN_NAMES))).toBe(
       os.platform() === 'win32' ? 'psmux.exe' : 'psmux'
     )
   })
 
   it('prefers tmux over psmux when both are installed', () => {
     // tmux is the reference implementation; psmux is the compatible stand-in. Wherever the real
-    // thing exists it wins, so no macOS/Linux host can ever be pulled onto the fallback.
-    expect(binName(findTmux(pathDir('tmux', 'psmux'), []))).toBe(
+    // thing exists it wins, so no host can ever be pulled onto the fallback while tmux is there.
+    expect(binName(findTmux(pathDir('tmux', 'psmux'), [], WIN_NAMES))).toBe(
       os.platform() === 'win32' ? 'tmux.exe' : 'tmux'
     )
   })
 
+  it('does NOT resolve psmux off the POSIX name list, even when it is right there', () => {
+    // The guard, stated as behaviour: a `psmux` a macOS or Linux user installed for some unrelated
+    // reason must not be selected. It would outrank the tmux the app ships (the PATH is consulted
+    // before that last resort), pairing a client we did not choose with a server we did.
+    expect(findTmux(pathDir('psmux'), [], tmuxBinNames('linux'))).toBeNull()
+    expect(findTmux(pathDir('psmux'), [], tmuxBinNames('darwin'))).toBeNull()
+  })
+
   it('returns null when no multiplexer is installed', () => {
-    expect(findTmux(pathDir('git'), [])).toBeNull()
+    expect(findTmux(pathDir('git'), [], WIN_NAMES)).toBeNull()
   })
 
   it('prefers a well-known absolute location over the PATH (GUI apps inherit a minimal PATH)', () => {
     const wellKnown = path.join(pathDir('tmux'), os.platform() === 'win32' ? 'tmux.exe' : 'tmux')
-    expect(findTmux(pathDir('tmux'), [wellKnown])).toBe(wellKnown)
+    expect(findTmux(pathDir('tmux'), [wellKnown], WIN_NAMES)).toBe(wellKnown)
   })
 
   it('skips a well-known location that does not exist', () => {
     const dir = pathDir('psmux')
-    expect(binName(findTmux(dir, [path.join(dir, 'nope', 'tmux')]))).toBe(
+    expect(binName(findTmux(dir, [path.join(dir, 'nope', 'tmux')], WIN_NAMES))).toBe(
       os.platform() === 'win32' ? 'psmux.exe' : 'psmux'
     )
+  })
+})
+
+describe('tmuxBinNames', () => {
+  it('asks only for tmux on macOS and Linux', () => {
+    expect(tmuxBinNames('darwin')).toEqual(['tmux'])
+    expect(tmuxBinNames('linux')).toEqual(['tmux'])
+  })
+
+  it('adds psmux on Windows, where tmux does not exist', () => {
+    expect(tmuxBinNames('win32')).toEqual(['tmux', 'psmux'])
+  })
+
+  it('keeps tmux first everywhere — the reference implementation always wins', () => {
+    for (const plat of ['darwin', 'linux', 'win32']) {
+      expect(tmuxBinNames(plat)[0]).toBe('tmux')
+    }
   })
 })
 

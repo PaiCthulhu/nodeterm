@@ -152,20 +152,33 @@ bind -T copy-mode-vi TripleClick1Pane send-keys -X select-line \\; send-keys -X 
 `
 }
 
+const TMUX_BIN_POSIX = ['tmux'] as const
+const TMUX_BIN_WIN32 = ['tmux', 'psmux'] as const
+
 /**
  * Executable names that provide the tmux command surface, in preference order.
  *
- * `tmux` is the reference implementation and always wins. `psmux` is a tmux-compatible
- * multiplexer for Windows — where tmux does not exist at all, and without which the app degrades
- * SILENTLY to a plain shell: no continuity across an app restart or a reboot, no scrollback
- * restore, no resumable agent, and nothing telling the user why. It answers every subcommand this
- * file issues (verified against psmux 3.3.7 — see `tmux-discovery.test.ts` for the list), so it
- * needs no adapter: just another name to look for.
+ * `tmux` is the reference implementation and always wins, on every platform. `psmux` is a
+ * tmux-compatible multiplexer for Windows — where tmux does not exist at all, and without which
+ * the app degrades SILENTLY to a plain shell: no continuity across an app restart or a reboot, no
+ * scrollback restore, no resumable agent, and nothing telling the user why. It answers every
+ * subcommand this file issues (verified against psmux 3.3.7 — see `tmux-discovery.test.ts` for the
+ * list), so it needs no adapter: just another name to look for.
  *
- * The extra lookup is a plain PATH walk and only ever runs when `tmux` was NOT found, so a macOS
- * or Linux host — which hits the well-known absolute paths below first — pays nothing.
+ * IT IS SCOPED TO `win32` RATHER THAN PROBED EVERYWHERE, and the reason is precedence, not cost.
+ * The PATH walk itself is cheap and, on a machine with no `psmux` anywhere, is a guaranteed null.
+ * But the resolution order here is deliberate — fixed system paths, then the PATH, then (once the
+ * bundled multiplexer lands) the copy the app ships — and each name in this list is tried against
+ * the PATH BEFORE that last resort is reached. A `psmux` that a macOS or Linux user installed for
+ * some unrelated reason would therefore be selected ahead of the tmux we ship for them, pairing a
+ * client we did not choose with a server we did. Naming it only where it is the intended answer
+ * keeps that impossible.
  */
-const TMUX_BIN_NAMES = ['tmux', 'psmux'] as const
+export function tmuxBinNames(
+  plat: NodeJS.Platform | string = process.platform
+): readonly string[] {
+  return plat === 'win32' ? TMUX_BIN_WIN32 : TMUX_BIN_POSIX
+}
 
 /** Absolute locations a GUI app must check itself, since it inherits only a minimal PATH. */
 const TMUX_WELL_KNOWN_POSIX = ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux', '/bin/tmux']
@@ -195,10 +208,11 @@ export function wellKnownTmux(plat: NodeJS.Platform | string = process.platform)
  *  login-shell PATH instead; before that async probe settles a nonstandard location can be
  *  missed, which init()'s post-probe ensureTmux() re-run and tmuxStatus()'s re-probe cover.
  *
- *  Both arguments are injection seams for the tests ONLY — production always calls it bare. */
+ *  All three arguments are injection seams for the tests ONLY — production always calls it bare. */
 export function findTmux(
   pathStr: string | null | undefined = shellPathNow() ?? process.env.PATH,
-  wellKnown: readonly string[] = wellKnownTmux()
+  wellKnown: readonly string[] = wellKnownTmux(),
+  binNames: readonly string[] = tmuxBinNames()
 ): string | null {
   for (const c of wellKnown) {
     try {
@@ -207,7 +221,7 @@ export function findTmux(
       // ignore
     }
   }
-  for (const name of TMUX_BIN_NAMES) {
+  for (const name of binNames) {
     const hit = findInPathString(name, pathStr)
     if (hit) return hit
   }
@@ -811,10 +825,20 @@ export class PtyManager {
     const available = !!this.tmuxPath
     const hint = available
       ? null
-      : // `isExecutable`, NOT `fs.existsSync`: on Windows the package manager we look for
-        // (`winget`) is an App Execution Alias, which existsSync reports as absent — see
-        // `isExecutable`. On POSIX it is also simply the more accurate question.
-        tmuxInstall(process.platform, (cmd) => findCommand(cmd, process.env, isExecutable))
+      : // The probe predicate is platform-scoped ON PURPOSE, and the asymmetry is the point.
+        //
+        // Windows NEEDS `isExecutable`: the package manager this looks for (`winget`) ships as an
+        // App Execution Alias — a reparse point `fs.existsSync` reports as ABSENT — so an
+        // existsSync probe offers no install command at all on the one platform that has no tmux
+        // to begin with, which is exactly the case the banner exists for.
+        //
+        // POSIX keeps `fs.existsSync`, byte-identical to before this branch. An X_OK probe is the
+        // more accurate question for brew/apt/dnf too, but tightening their detection is a
+        // macOS/Linux behaviour change, and it has no business riding along in a Windows port. If
+        // it is wanted there, it is a one-word change of its own.
+        tmuxInstall(process.platform, (cmd) =>
+          findCommand(cmd, process.env, process.platform === 'win32' ? isExecutable : fs.existsSync)
+        )
     return {
       available,
       installCommand: hint?.command ?? null,
